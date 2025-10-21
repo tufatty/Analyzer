@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-x00shb-o(ob^x!)52ii_je5qw93pa!z9vhas4h@c&z!!qp*wt&
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['.railway.app', 'localhost','127.0.0.1']
 
 
 # Application definition
@@ -124,3 +124,9 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+REST_FRAMEWORK = {
+'DEFAULT_RENDERER_CLASSES': [
+'rest_framework.renderers.JSONRenderer',
+]
+}
