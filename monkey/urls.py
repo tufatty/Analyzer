@@ -1,12 +1,8 @@
 from django.urls import path
-from . views import StringListView, StringDetailView, NaturalLanguageFilterView
+from .views import StringListCreateView, StringDetailView
 
-
-# ========================
-# URLS
-# ========================
 urlpatterns = [
-    path('strings', StringListView.as_view()),
-    path('strings/<str:string_value>', StringDetailView.as_view()),
-    path('strings/filter-by-natural-language', NaturalLanguageFilterView.as_view()),
+    path("strings", StringListCreateView.as_view(), name="string_list_create"),
+    path("strings/<str:string_value>", StringDetailView.as_view(), name="string_detail"),
 ]
+
