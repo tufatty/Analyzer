@@ -1,90 +1,77 @@
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from django.core.exceptions import ObjectDoesNotExist
+import json
 from .models import StringEntry
-from .serializers import StringEntrySerializer
-
-# Utility function to analyze the string
-def analyze_string(value):
-    length = len(value)
-    is_palindrome = value.lower() == value[::-1].lower()
-    is_natural = value.isalpha()
-    vowels = sum(1 for ch in value.lower() if ch in "aeiou")
-    consonants = sum(1 for ch in value.lower() if ch.isalpha() and ch not in "aeiou")
-
-    return {
-        "value": value,
-        "length": length,
-        "is_palindrome": is_palindrome,
-        "is_natural": is_natural,
-        "vowels": vowels,
-        "consonants": consonants,
-    }
-
-# POST /api/strings
-class StringListCreateView(APIView):
-    def post(self, request):
-        value = request.data.get("value")
-        if not value:
-            return Response(
-                {"error": "Missing 'value' field."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Check for duplicates
-        if StringEntry.objects.filter(value=value).exists():
-            return Response(
-                {"error": "String already exists."},
-                status=status.HTTP_409_CONFLICT,
-            )
-
-        data = analyze_string(value)
-        serializer = StringEntrySerializer(data=data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    def get(self, request):
-        # Optional query params: ?is_palindrome=true&min_length=3
-        queryset = StringEntry.objects.all()
-
-        is_palindrome = request.GET.get("is_palindrome")
-        if is_palindrome:
-            queryset = queryset.filter(is_palindrome=is_palindrome.lower() == "true")
-
-        is_natural = request.GET.get("is_natural")
-        if is_natural:
-            queryset = queryset.filter(is_natural=is_natural.lower() == "true")
-
-        min_length = request.GET.get("min_length")
-        if min_length:
-            queryset = queryset.filter(length__gte=int(min_length))
-
-        serializer = StringEntrySerializer(queryset, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# GET /api/strings/<string_value>  and DELETE /api/strings/<string_value>
-class StringDetailView(APIView):
-    def get(self, request, string_value):
-        try:
-            entry = StringEntry.objects.get(value=string_value)
-        except StringEntry.DoesNotExist:
-            return Response(
-                {"error": "String not found."}, status=status.HTTP_404_NOT_FOUND
-            )
+# Utility to check palindrome
+def is_palindrome(value):
+    cleaned = ''.join(ch.lower() for ch in value if ch.isalnum())
+    return cleaned == cleaned[::-1]
 
-        serializer = StringEntrySerializer(entry)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def delete(self, request, string_value):
-        try:
-            entry = StringEntry.objects.get(value=string_value)
-        except StringEntry.DoesNotExist:
-            return Response(
-                {"error": "String not found."}, status=status.HTTP_404_NOT_FOUND
-            )
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def string_list_create(request):
+    if request.method == "GET":
+        strings = StringEntry.objects.all()
+        data = [{"value": s.value, "is_palindrome": s.is_palindrome} for s in strings]
+        return JsonResponse(data, safe=False, status=200)
 
-        entry.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    # POST
+    try:
+        body = json.loads(request.body)
+        value = body.get("value", "").strip()
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    if not value:
+        return JsonResponse({"error": "Missing 'value' field"}, status=400)
+
+    if not isinstance(value, str):
+        return JsonResponse({"error": "'value' must be a string"}, status=400)
+
+    # Check for duplicate
+    if StringEntry.objects.filter(value=value).exists():
+        return JsonResponse({"error": "String already exists"}, status=409)
+
+    string_obj = StringEntry.objects.create(value=value, is_palindrome=is_palindrome(value),length=len(value))
+    data = {"value": string_obj.value, "is_palindrome": string_obj.is_palindrome}
+    return JsonResponse(data, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["GET", "DELETE"])
+def string_detail(request, string_value):
+    try:
+        string_obj = StringEntry.objects.get(value=string_value)
+    except ObjectDoesNotExist:
+        return JsonResponse({"error": "String not found"}, status=404)
+
+    if request.method == "GET":
+        data = {"value": string_obj.value, "is_palindrome": string_obj.is_palindrome}
+        return JsonResponse(data, status=200)
+
+    # DELETE
+    string_obj.delete()
+    return JsonResponse({"message": "String deleted"}, status=200)
+
+
+@require_http_methods(["GET"])
+def filter_by_natural_language(request):
+    query = request.GET.get("query", "").lower().strip()
+    if not query:
+        return JsonResponse({"error": "Missing query parameter"}, status=400)
+
+    strings = StringEntry.objects.all()
+
+    if "palindrome" in query:
+        strings = strings.filter(is_palindrome=True)
+
+    if "single word" in query:
+        strings = [s for s in strings if " " not in s.value]
+
+    results = [{"value": s.value, "is_palindrome": s.is_palindrome} for s in strings]
+    return JsonResponse(results, safe=False, status=200)
